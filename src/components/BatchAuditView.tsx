@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { PatientCase, ClaimValidationReport } from "../lib/types";
 import { auditBatchClaims, generateAuditCsv } from "../lib/claim-validator";
+import { parseClaimsFromCsv, parseClaimsFromJson } from "../lib/claim-parser";
 import { simulated50BatchCases } from "../lib/batch-simulator";
 import {
   Coins,
@@ -19,14 +20,30 @@ import {
   FileText,
   ShieldCheck,
   ChevronRight,
-  Activity
+  Activity,
+  UploadCloud,
+  FileUp,
+  AlertCircle,
+  X
 } from "lucide-react";
 
 export function BatchAuditView() {
   const [batchCases, setBatchCases] = useState<PatientCase[]>(simulated50BatchCases);
+  const [sourceName, setSourceName] = useState<string>("Simulasi 50 Klaim FKTP");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedReport, setSelectedReport] = useState<ClaimValidationReport | null>(null);
+
+  // Upload & Drag-Drop State
+  const [showUploadZone, setShowUploadZone] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const auditReport = useMemo(() => auditBatchClaims(batchCases), [batchCases]);
 
@@ -44,6 +61,66 @@ export function BatchAuditView() {
       return matchesSearch && matchesStatus;
     });
   }, [auditReport.claimReports, searchQuery, statusFilter]);
+
+  const handleProcessFile = (file: File) => {
+    setIsProcessing(true);
+    setUploadNotice(null);
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = (e.target?.result as string) || "";
+        const isJson = file.name.toLowerCase().endsWith(".json") || file.type.includes("json");
+        const parseResult = isJson ? parseClaimsFromJson(text) : parseClaimsFromCsv(text);
+
+        if (parseResult.success && parseResult.data && parseResult.data.length > 0) {
+          setBatchCases(parseResult.data);
+          setSourceName(file.name);
+          setUploadNotice({
+            type: "success",
+            message: `Berhasil mengimpor & mengaudit ${parseResult.data.length} berkas klaim dari '${file.name}'.`
+          });
+        } else {
+          setUploadNotice({
+            type: "error",
+            message: parseResult.error || "Gagal memproses berkas klaim."
+          });
+        }
+      } catch (err: any) {
+        setUploadNotice({
+          type: "error",
+          message: `Gagal membaca berkas: ${err?.message || "Format tidak didukung"}`
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleProcessFile(e.target.files[0]);
+    }
+  };
 
   const handleDownloadCsv = () => {
     const csv = generateAuditCsv(auditReport);
@@ -79,8 +156,10 @@ export function BatchAuditView() {
 
   const handleResetBatch = () => {
     setBatchCases([...simulated50BatchCases]);
+    setSourceName("Simulasi 50 Klaim FKTP");
     setSearchQuery("");
     setStatusFilter("ALL");
+    setUploadNotice(null);
   };
 
   const { issueBreakdown } = auditReport;
@@ -92,19 +171,30 @@ export function BatchAuditView() {
         <div className="space-y-1">
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded-full bg-teal-500/10 text-teal-400 text-xs font-mono border border-teal-500/30">
-              SIMULASI 50 KLAIM FKTP
+              {sourceName.toUpperCase()}
             </span>
-            <span className="text-xs text-slate-400">Periode Berjalan</span>
+            <span className="text-xs text-slate-400">Total {batchCases.length} Berkas</span>
           </div>
           <h2 className="text-xl font-extrabold text-white tracking-tight">
             Audit Kolektif Berkas Klaim Faskes Tingkat Pertama
           </h2>
           <p className="text-xs text-slate-400">
-            Deteksi otomatis anomali diagnosa non-kompetensi, pelanggaran Fornas, polifarmasi, dan administrasi SEP sebelum pengajuan klaim.
+            Deteksi otomatis anomali diagnosa non-kompetensi, pelanggaran Fornas, polifarmasi, administrasi SEP, dan kadaluwarsa pengajuan &gt;15 hari.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowUploadZone(!showUploadZone)}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+              showUploadZone
+                ? "bg-teal-700 text-white border-teal-500"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+            }`}
+          >
+            <UploadCloud className="h-3.5 w-3.5 text-teal-400" />
+            <span>Unggah CSV / JSON</span>
+          </button>
           <button
             onClick={handleDownloadCsv}
             className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
@@ -122,12 +212,99 @@ export function BatchAuditView() {
           <button
             onClick={handleResetBatch}
             className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition"
-            title="Reset Data Simulasi"
+            title="Reset ke Data Simulasi Awal"
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
+
+      {/* Upload & Drag and Drop Zone */}
+      {showUploadZone && (
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition ${
+            isDragging
+              ? "border-teal-400 bg-teal-950/40"
+              : "border-slate-700 bg-slate-900/60 hover:border-slate-600"
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.json,text/csv,application/json"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400">
+              <FileUp className="h-6 w-6" />
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold text-white">
+                Drag & Drop Berkas Klaim Faskes di Sini
+              </h4>
+              <p className="text-xs text-slate-400 mt-1">
+                Format didukung: <strong>.csv</strong> (kolom Nama, No BPJS, No SEP, ICD, Nilai Klaim, Resep) atau <strong>.json</strong> array berkas klaim.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow"
+              >
+                <UploadCloud className="h-4 w-4" />
+                <span>Pilih Berkas Komputer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUploadZone(false)}
+                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+              >
+                Tutup Form
+              </button>
+            </div>
+
+            {isProcessing && (
+              <div className="text-xs text-teal-400 animate-pulse font-medium pt-2">
+                Memproses berkas klaim dan menjalankan pre-audit otomatis...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Feedback Banner */}
+      {uploadNotice && (
+        <div
+          className={`p-4 rounded-xl border text-xs flex items-center justify-between transition ${
+            uploadNotice.type === "success"
+              ? "bg-emerald-950/40 border-emerald-800 text-emerald-300"
+              : "bg-rose-950/40 border-rose-800 text-rose-300"
+          }`}
+        >
+          <div className="flex items-center space-x-2.5">
+            {uploadNotice.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            )}
+            <span>{uploadNotice.message}</span>
+          </div>
+          <button
+            onClick={() => setUploadNotice(null)}
+            className="p-1 hover:bg-slate-800/60 rounded text-slate-400 hover:text-slate-200"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* KPI Dashboard Strip (4 Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -206,7 +383,7 @@ export function BatchAuditView() {
       {/* Visual Proportional Bar */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-2">
         <div className="flex justify-between text-xs font-semibold text-slate-300">
-          <span>Proposi Status Klaim Kolektif</span>
+          <span>Proporsi Status Klaim Kolektif</span>
           <span className="text-slate-400">Target Faskes Sehat: Layak Cair &gt; 90%</span>
         </div>
         <div className="h-3 w-full bg-slate-950 rounded-full overflow-hidden flex">
@@ -247,7 +424,7 @@ export function BatchAuditView() {
               Tabel Breakdown Isu & Evaluasi Risiko Klaim
             </h3>
             <p className="text-xs text-slate-400">
-              Klasifikasi 4 jenis anomali berkas penyebab penolakan dan dispute klaim BPJS Kesehatan di FKTP.
+              Klasifikasi 4 jenis anomali berkas penyebab penolakan, kadaluwarsa, dan dispute klaim BPJS Kesehatan di FKTP.
             </p>
           </div>
           <span className="text-xs px-2.5 py-1 rounded bg-slate-800 text-slate-300 font-mono">
@@ -351,7 +528,7 @@ export function BatchAuditView() {
         </div>
       </div>
 
-      {/* Tabel 50 Berkas Klaim (Filter & Search) */}
+      {/* Tabel Rincian Berkas Klaim (Filter & Search) */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -359,7 +536,7 @@ export function BatchAuditView() {
               Rincian Berkas Klaim Batch ({filteredReports.length} dari {auditReport.totalClaimsCount})
             </h3>
             <p className="text-xs text-slate-400">
-              Pilih baris berkas untuk melihat audit trail dan instruksi perbaikan klaim secara detail.
+              Pilih baris berkas untuk melihat audit trail, rincian obat, dan instruksi perbaikan klaim.
             </p>
           </div>
 
@@ -432,7 +609,7 @@ export function BatchAuditView() {
                               {issue === "nonFktpDiagnosis" && "Non-Kompetensi"}
                               {issue === "fornasViolations" && "Fornas"}
                               {issue === "irrationalPolypharmacy" && "Polifarmasi"}
-                              {issue === "sepMismatch" && "SEP"}
+                              {issue === "sepMismatch" && "SEP / Expired"}
                             </span>
                           ))}
                         </div>
@@ -442,26 +619,34 @@ export function BatchAuditView() {
                       Rp {c.estimatedClaimAmount.toLocaleString("id-ID")}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`font-mono font-bold ${
-                        c.score >= 80 ? "text-emerald-400" : c.score >= 50 ? "text-amber-400" : "text-rose-400"
-                      }`}>
+                      <span
+                        className={`font-mono font-bold ${
+                          c.score >= 80
+                            ? "text-emerald-400"
+                            : c.score >= 50
+                            ? "text-amber-400"
+                            : "text-rose-400"
+                        }`}
+                      >
                         {c.score}%
                       </span>
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                        c.status === "LAYAK_CAIR"
-                          ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
-                          : c.status === "RISIKO_DISPUTE"
-                          ? "bg-amber-950/80 text-amber-400 border-amber-800"
-                          : "bg-rose-950/80 text-rose-400 border-rose-800"
-                      }`}>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          c.status === "LAYAK_CAIR"
+                            ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
+                            : c.status === "RISIKO_DISPUTE"
+                            ? "bg-amber-950/80 text-amber-400 border-amber-800"
+                            : "bg-rose-950/80 text-rose-400 border-rose-800"
+                        }`}
+                      >
                         {c.status.replace("_", " ")}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-center">
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
                           setSelectedReport(c);
                         }}
@@ -500,18 +685,26 @@ export function BatchAuditView() {
 
               <div className="text-right">
                 <div className="text-xs text-slate-400">Skor Kepatuhan</div>
-                <div className={`text-2xl font-black ${
-                  selectedReport.score >= 80 ? "text-emerald-400" : selectedReport.score >= 50 ? "text-amber-400" : "text-rose-400"
-                }`}>
+                <div
+                  className={`text-2xl font-black ${
+                    selectedReport.score >= 80
+                      ? "text-emerald-400"
+                      : selectedReport.score >= 50
+                      ? "text-amber-400"
+                      : "text-rose-400"
+                  }`}
+                >
                   {selectedReport.score}%
                 </div>
-                <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${
-                  selectedReport.status === "LAYAK_CAIR"
-                    ? "bg-emerald-950 text-emerald-400 border-emerald-800"
-                    : selectedReport.status === "RISIKO_DISPUTE"
-                    ? "bg-amber-950 text-amber-400 border-amber-800"
-                    : "bg-rose-950 text-rose-400 border-rose-800"
-                }`}>
+                <span
+                  className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${
+                    selectedReport.status === "LAYAK_CAIR"
+                      ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                      : selectedReport.status === "RISIKO_DISPUTE"
+                      ? "bg-amber-950 text-amber-400 border-amber-800"
+                      : "bg-rose-950 text-rose-400 border-rose-800"
+                  }`}
+                >
                   {selectedReport.status.replace("_", " ")}
                 </span>
               </div>

@@ -8,7 +8,10 @@ import {
 } from "./types";
 import { icd10Catalog, fornasMedicines } from "./clinical-database";
 
-export function validateBpjsClaim(patientCase: PatientCase): ClaimValidationReport {
+export function validateBpjsClaim(
+  patientCase: PatientCase,
+  referenceDate?: string
+): ClaimValidationReport {
   const checks: ClinicalCheckItem[] = [];
   const auditFlags: string[] = [];
   const recommendedFixes: string[] = [];
@@ -240,6 +243,46 @@ export function validateBpjsClaim(patientCase: PatientCase): ClaimValidationRepo
     recommendedFixes.push("Lampirkan rincian tindakan medis atau pemeriksaan fisik penunjang yang dilakukan.");
   }
 
+  // Cek Batas Waktu Pengajuan Klaim SEP (Maksimal 15 Hari Kalender sejak pelayanan)
+  const auditDateStr =
+    referenceDate ||
+    (typeof window !== "undefined"
+      ? new Date().toISOString().split("T")[0]
+      : "2026-09-12");
+
+  if (patientCase.serviceDate) {
+    const serviceTime = new Date(patientCase.serviceDate).getTime();
+    const auditTime = new Date(auditDateStr).getTime();
+    if (!isNaN(serviceTime) && !isNaN(auditTime)) {
+      const diffDays = Math.floor((auditTime - serviceTime) / (1000 * 60 * 60 * 24));
+      if (diffDays > 15) {
+        score -= 35;
+        issueCategoriesSet.add("sepMismatch");
+        checks.push({
+          id: "sep_expired_15_days",
+          name: "Batas Waktu Pengajuan SEP (Maks 15 Hari Kalender)",
+          category: "Kesesuaian SEP",
+          passed: false,
+          message: `KADALUWARSA PENGAJUAN KLAIM (>15 HARI): Tanggal pelayanan (${patientCase.serviceDate}) telah melewati batas 15 hari kalender VClaim BPJS (selisih ${diffDays} hari dari tanggal audit ${auditDateStr}). Berkas berisiko DISPUTE KADALUWARSA atau DITOLAK.`,
+          severity: "CRITICAL"
+        });
+        auditFlags.push(`Klaim kadaluwarsa >15 hari (${diffDays} hari sejak pelayanan).`);
+        recommendedFixes.push(
+          "Ajukan surat permohonan dispensasi pembukaan kunci SEP kolektif ke verifikator BPJS Kesehatan KC setempat atau lakukan rekonsiliasi klaim susulan."
+        );
+      } else {
+        checks.push({
+          id: "sep_submission_deadline",
+          name: "Batas Waktu Pengajuan SEP (Maks 15 Hari Kalender)",
+          category: "Kesesuaian SEP",
+          passed: true,
+          message: `Tanggal pelayanan masih dalam batas aman pengajuan klaim (${Math.max(0, diffDays)} hari dari tanggal audit).`,
+          severity: "PASS"
+        });
+      }
+    }
+  }
+
   // Tentukan Status Kelayakan Klaim
   const finalScore = Math.max(0, score);
   let status: "LAYAK_CAIR" | "RISIKO_DISPUTE" | "POTENSI_DITOLAK" = "LAYAK_CAIR";
@@ -268,8 +311,8 @@ export function validateBpjsClaim(patientCase: PatientCase): ClaimValidationRepo
   };
 }
 
-export function auditBatchClaims(cases: PatientCase[]): BatchAuditReport {
-  const claimReports = cases.map(validateBpjsClaim);
+export function auditBatchClaims(cases: PatientCase[], referenceDate?: string): BatchAuditReport {
+  const claimReports = cases.map(c => validateBpjsClaim(c, referenceDate));
 
   let layakCairCount = 0;
   let layakCairAmount = 0;

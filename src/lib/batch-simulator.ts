@@ -517,9 +517,9 @@ export const simulated50BatchCases: PatientCase[] = [
     gender: "P",
     bpjsNumber: "0006728153427",
     sepNumber: "0115R0010926V00026",
-    sepDate: "2026-09-08", // Tanggal SEP 4 hari lebih awal dari tanggal layanan
-    serviceDate: "2026-09-12",
-    complaints: "Kontrol gastritis, SEP diterbitkan minggu lalu tapi baru datang.",
+    sepDate: "2026-08-20", // Pelayanan lebih dari 15 hari kalender (>15 hari expired)
+    serviceDate: "2026-08-20",
+    complaints: "Kontrol gastritis berkas lama tertahan lebih dari 15 hari kalender.",
     primaryIcd: "K29.7",
     secondaryIcd: [],
     medications: [

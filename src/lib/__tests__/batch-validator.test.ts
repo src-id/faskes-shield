@@ -140,6 +140,38 @@ describe("BPJS Batch Claim Pre-Validator Engine", () => {
     expect(report.checks.some(c => c.id === "sep_date_mismatch" && !c.passed)).toBe(true);
   });
 
+  it("should flag expired SEP (>15 calendar days from service date) as CRITICAL", () => {
+    const expiredSepCase: PatientCase = {
+      id: "test-expired-sep",
+      patientNo: "RM-9904",
+      patientName: "Bpk. Expired SEP",
+      age: 42,
+      gender: "L",
+      bpjsNumber: "0001928374832",
+      sepNumber: "0115R0010926V99994",
+      sepDate: "2026-08-20",
+      serviceDate: "2026-08-20", // 23 days before 2026-09-12
+      complaints: "Kontrol tensi berkas lama",
+      primaryIcd: "I10",
+      secondaryIcd: [],
+      medications: [
+        { medicineId: "MED-03", name: "Amlodipine 5mg", quantity: 30, days: 30, signa: "1x1" }
+      ],
+      procedures: ["Pemeriksaan Tanda Vital"],
+      claimAmount: 185_000
+    };
+
+    const report = validateBpjsClaim(expiredSepCase, "2026-09-12");
+    expect(report.issueCategories).toContain("sepMismatch");
+    expect(report.status).not.toBe("LAYAK_CAIR");
+
+    const expiredCheck = report.checks.find(c => c.id === "sep_expired_15_days");
+    expect(expiredCheck).toBeDefined();
+    expect(expiredCheck?.passed).toBe(false);
+    expect(expiredCheck?.severity).toBe("CRITICAL");
+    expect(expiredCheck?.message).toContain(">15 HARI");
+  });
+
   it("should generate properly formatted CSV string with headers and rows", () => {
     const report = auditBatchClaims(simulated50BatchCases.slice(0, 5));
     const csv = generateAuditCsv(report);

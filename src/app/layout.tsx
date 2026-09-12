@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Shield } from "lucide-react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,8 +18,8 @@ export default function RootLayout({
         <header className="border-b border-emerald-950/80 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 font-black text-white text-xl shadow-lg shadow-teal-500/30">
-                🛡️
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white shadow-lg shadow-teal-500/30">
+                <Shield className="h-5 w-5 text-white" />
               </span>
               <div>
                 <span className="font-extrabold text-lg text-white tracking-tight">FaskesShield</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { SrcIdLogo } from "../SrcIdLogo";
 import {
   LayoutDashboard,
   Layers,
@@ -94,8 +95,8 @@ export function Sidebar({
         {/* Brand Header */}
         <div className="h-16 px-5 border-b border-emerald-950 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm">
-              <ShieldCheck className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm p-1.5">
+              <SrcIdLogo className="w-full h-full" stroke="#34d399" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
